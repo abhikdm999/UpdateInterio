@@ -177,10 +177,16 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
       
       // Load Razorpay script dynamically
       const loadRazorpay = () => {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
+          if ((window as any).Razorpay) {
+            resolve((window as any).Razorpay);
+            return;
+          }
+          
           const script = document.createElement('script');
           script.src = 'https://checkout.razorpay.com/v1/checkout.js';
           script.onload = () => resolve((window as any).Razorpay);
+          script.onerror = () => reject(new Error('Failed to load Razorpay script'));
           document.body.appendChild(script);
         });
       };
@@ -189,19 +195,19 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
       
       const options = {
         key: RAZORPAY_CONFIG.keyId,
-        amount: amount * 100, // Convert to paise
-        currency: 'INR',
+        amount: orderData.order.amount,
+        currency: orderData.order.currency,
         name: RAZORPAY_CONFIG.company.name,
-        description: `Payment via ${app.name}`,
+        description: `Payment via ${app.name} - Test Environment`,
         image: RAZORPAY_CONFIG.company.logo,
         order_id: orderData.order.id,
         method: {
           upi: true,
         },
         prefill: {
-          name: 'Customer Name',
-          email: 'customer@example.com',
-          contact: '9999999999',
+          name: customerInfo.name,
+          email: customerInfo.email,
+          contact: customerInfo.contact,
         },
         theme: {
           color: RAZORPAY_CONFIG.company.theme.color,
@@ -252,12 +258,20 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
           ondismiss: () => {
             console.log('Payment modal closed by user');
             setIsProcessing(false);
-            onPaymentError('Payment was cancelled by user');
+            // Don't call onPaymentError on modal dismiss, just reset state
           },
         },
       };
       
       const rzp = new razorpay(options);
+      
+      // Add error handling for payment failures
+      rzp.on('payment.failed', (response: any) => {
+        console.error('Razorpay payment failed:', response);
+        setIsProcessing(false);
+        onPaymentError(`Payment failed: ${response.error.description || 'Unknown error'}`);
+      });
+      
       rzp.open();
       
     } catch (error) {
