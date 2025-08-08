@@ -1,13 +1,22 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Package, Heart, Settings, LogOut, Edit, Camera, ShoppingBag } from 'lucide-react';
+import { User, Package, Heart, Settings, LogOut, Edit, Camera, ShoppingBag, Save, X } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
-import { logout } from '../../store/slices/authSlice';
+import { logout, setUser } from '../../store/slices/authSlice';
+import { MockAuthService } from '../../utils/mockAuth';
 import OrdersPage from './OrdersPage';
 
 const AccountPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('profile');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    fullName: '',
+    phone: '',
+    dateOfBirth: '',
+    address: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
   const dispatch = useDispatch();
   const { user, isAuthenticated } = useSelector((state: RootState) => state.auth);
   const { items: wishlistItems } = useSelector((state: RootState) => state.wishlist);
@@ -15,6 +24,53 @@ const AccountPage: React.FC = () => {
 
   const handleLogout = () => {
     dispatch(logout());
+  };
+
+  const handleEditProfile = () => {
+    setProfileForm({
+      fullName: user?.fullName || '',
+      phone: user?.phone || '',
+      dateOfBirth: '',
+      address: typeof user?.address === 'string' ? user.address : ''
+    });
+    setIsEditingProfile(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingProfile(false);
+    setProfileForm({
+      fullName: '',
+      phone: '',
+      dateOfBirth: '',
+      address: ''
+    });
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const updatedUser = await MockAuthService.updateProfile(user.id, {
+        fullName: profileForm.fullName,
+        phone: profileForm.phone,
+        address: profileForm.address
+      });
+      
+      dispatch(setUser(updatedUser));
+      setIsEditingProfile(false);
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setProfileForm(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
   };
 
   if (!isAuthenticated) {
@@ -109,14 +165,39 @@ const AccountPage: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-gray-900">Profile Information</h2>
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                      <span>Edit Profile</span>
-                    </motion.button>
+                    {!isEditingProfile ? (
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleEditProfile}
+                        className="flex items-center space-x-2 bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                        <span>Edit Profile</span>
+                      </motion.button>
+                    ) : (
+                      <div className="flex space-x-2">
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleCancelEdit}
+                          className="flex items-center space-x-2 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Cancel</span>
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleSaveProfile}
+                          disabled={isLoading}
+                          className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>{isLoading ? 'Saving...' : 'Save'}</span>
+                        </motion.button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -124,9 +205,13 @@ const AccountPage: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
                       <input
                         type="text"
-                        value={user?.name || ''}
-                        readOnly
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50"
+                        name="fullName"
+                        value={isEditingProfile ? profileForm.fullName : (user?.fullName || '')}
+                        onChange={handleInputChange}
+                        readOnly={!isEditingProfile}
+                        className={`w-full px-4 py-3 border border-gray-300 rounded-lg ${
+                          isEditingProfile ? 'bg-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent' : 'bg-gray-50'
+                        }`}
                       />
                     </div>
                     <div>
@@ -142,15 +227,27 @@ const AccountPage: React.FC = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
                       <input
                         type="tel"
-                        placeholder="Add phone number"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                        name="phone"
+                        value={isEditingProfile ? profileForm.phone : (user?.phone || '')}
+                        onChange={handleInputChange}
+                        readOnly={!isEditingProfile}
+                        placeholder={isEditingProfile ? "Enter phone number" : "No phone number"}
+                        className={`w-full px-4 py-3 border border-gray-300 rounded-lg ${
+                          isEditingProfile ? 'bg-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent' : 'bg-gray-50'
+                        }`}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
                       <input
                         type="date"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                        name="dateOfBirth"
+                        value={profileForm.dateOfBirth}
+                        onChange={handleInputChange}
+                        readOnly={!isEditingProfile}
+                        className={`w-full px-4 py-3 border border-gray-300 rounded-lg ${
+                          isEditingProfile ? 'bg-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent' : 'bg-gray-50'
+                        }`}
                       />
                     </div>
                   </div>
@@ -159,21 +256,32 @@ const AccountPage: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
                     <textarea
                       rows={3}
-                      placeholder="Enter your address"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                      name="address"
+                      value={isEditingProfile ? profileForm.address : (typeof user?.address === 'string' ? user.address : '')}
+                      onChange={handleInputChange}
+                      readOnly={!isEditingProfile}
+                      placeholder={isEditingProfile ? "Enter your address" : "No address added"}
+                      className={`w-full px-4 py-3 border border-gray-300 rounded-lg ${
+                        isEditingProfile ? 'bg-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent' : 'bg-gray-50'
+                      }`}
                     />
                   </div>
 
-                  {/* Save Button */}
-                  <div className="mt-8 pt-6 border-t border-gray-200">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-4 rounded-xl font-semibold text-lg transition-colors flex items-center justify-center space-x-2"
-                    >
-                      <span>Save Profile</span>
-                    </motion.button>
-                  </div>
+                  {/* Save Button - only show when editing */}
+                  {isEditingProfile && (
+                    <div className="mt-8 pt-6 border-t border-gray-200">
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleSaveProfile}
+                        disabled={isLoading}
+                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-4 rounded-xl font-semibold text-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+                      >
+                        <Save className="w-5 h-5" />
+                        <span>{isLoading ? 'Saving Profile...' : 'Save Profile'}</span>
+                      </motion.button>
+                    </div>
+                  )}
                 </div>
               )}
 

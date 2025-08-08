@@ -93,9 +93,9 @@ export class MockAuthService {
       phone: user.mobileNumber,
       avatarUrl: user.avatar,
       emailVerified: true,
-      lastLogin: new Date(),
-      createdAt: new Date(user.createdAt),
-      updatedAt: new Date(),
+      lastLogin: new Date().toISOString(),
+      createdAt: new Date(user.createdAt).toISOString(),
+      updatedAt: new Date().toISOString(),
       password: user.password,
       address: null
     };
@@ -111,11 +111,58 @@ export class MockAuthService {
       phone: userData.phone,
       avatarUrl: user.avatar,
       emailVerified: true,
-      lastLogin: new Date(),
-      createdAt: new Date(user.createdAt),
-      updatedAt: new Date(),
+      lastLogin: new Date().toISOString(),
+      createdAt: new Date(user.createdAt).toISOString(),
+      updatedAt: new Date().toISOString(),
       password: user.password,
       address: null
+    };
+  }
+
+  // Update user profile
+  static async updateProfile(userId: string, updateData: Partial<{
+    fullName: string;
+    phone: string;
+    address: any;
+  }>): Promise<any> {
+    const users = this.getStoredUsers();
+    const userIndex = users.findIndex(user => user.id === userId);
+    
+    if (userIndex === -1) {
+      throw new Error('User not found');
+    }
+
+    // Update the stored user
+    if (updateData.fullName) users[userIndex].fullName = updateData.fullName;
+    if (updateData.phone) users[userIndex].mobileNumber = updateData.phone;
+    
+    this.saveUsers(users);
+
+    // Update current user session
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      const updatedUser = {
+        ...currentUser,
+        name: updateData.fullName || currentUser.name,
+        mobileNumber: updateData.phone || currentUser.mobileNumber,
+      };
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedUser));
+    }
+
+    // Return updated user in the expected format
+    const updatedUser = users[userIndex];
+    return {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      fullName: updatedUser.fullName,
+      phone: updatedUser.mobileNumber,
+      avatarUrl: updatedUser.avatar,
+      emailVerified: true,
+      lastLogin: new Date().toISOString(),
+      createdAt: new Date(updatedUser.createdAt).toISOString(),
+      updatedAt: new Date().toISOString(),
+      password: updatedUser.password,
+      address: updateData.address || null
     };
   }
 
