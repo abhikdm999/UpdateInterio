@@ -127,9 +127,7 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
   }): Promise<Product[]> {
-    let query = db.select().from(products);
-    
-    // Apply filters
+    // Build the query with proper typing
     const conditions = [];
     if (filters?.category) {
       conditions.push(eq(products.category, filters.category));
@@ -138,20 +136,20 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(products.featured, filters.featured));
     }
     
+    let query = db.select().from(products);
+    
     if (conditions.length > 0) {
-      query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions));
+      query = query.where(conditions.length === 1 ? conditions[0] : and(...conditions)) as any;
     }
     
-    // Apply ordering
-    query = query.orderBy(desc(products.createdAt));
+    query = query.orderBy(desc(products.createdAt)) as any;
     
-    // Apply pagination
-    if (filters?.limit && filters?.offset) {
-      return await query.limit(filters.limit).offset(filters.offset);
-    } else if (filters?.limit) {
-      return await query.limit(filters.limit);
-    } else if (filters?.offset) {
-      return await query.offset(filters.offset);
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    
+    if (filters?.offset) {
+      query = query.offset(filters.offset) as any;
     }
     
     return await query;
