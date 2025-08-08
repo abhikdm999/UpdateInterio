@@ -82,7 +82,7 @@ const ProductGrid: React.FC<ProductGridProps> = ({
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center py-12">
-            <p className="text-red-600 text-lg">Error loading products: {error}</p>
+            <p className="text-red-600 text-lg">Error loading products: {error?.message || 'Unknown error occurred'}</p>
             <button
               onClick={() => window.location.reload()}
               className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg transition-colors"
