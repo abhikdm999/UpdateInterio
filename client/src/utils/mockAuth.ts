@@ -83,6 +83,42 @@ export class MockAuthService {
     return user;
   }
 
+  // Sign in (alias for login)
+  static async signIn(email: string, password: string): Promise<any> {
+    const user = await this.login(email, password);
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.mobileNumber,
+      avatarUrl: user.avatar,
+      emailVerified: true,
+      lastLogin: new Date(),
+      createdAt: new Date(user.createdAt),
+      updatedAt: new Date(),
+      password: user.password,
+      address: null
+    };
+  }
+
+  // Sign up
+  static async signUp(userData: { email: string; password: string; fullName: string; phone?: string }): Promise<any> {
+    const user = await this.register(userData.email, userData.password, userData.fullName, userData.phone);
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: userData.phone,
+      avatarUrl: user.avatar,
+      emailVerified: true,
+      lastLogin: new Date(),
+      createdAt: new Date(user.createdAt),
+      updatedAt: new Date(),
+      password: user.password,
+      address: null
+    };
+  }
+
   // Set current user
   private static setCurrentUser(user: StoredUser): void {
     try {

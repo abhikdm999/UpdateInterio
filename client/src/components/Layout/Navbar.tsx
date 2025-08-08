@@ -5,6 +5,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { toggleCart } from '../../store/slices/cartSlice';
 import { setSearchQuery } from '../../store/slices/productSlice';
+import { logout } from '../../store/slices/authSlice';
 import AuthModal from '../Auth/AuthModal';
 
 interface NavbarProps {
@@ -78,12 +79,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
   };
 
   const handleLogout = async () => {
-    if (supabaseUser) {
-      await signOut();
-    } else {
-      MockAuthService.logout();
-      dispatch(setUser(null));
-    }
+    dispatch(logout());
     onNavigate('home');
   };
 
@@ -193,7 +189,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate }) => {
                     )}
                   </div>
                   <span className="hidden sm:block text-lg font-medium text-gray-700">
-                    {user?.user_metadata?.full_name || user?.email || 'User'}
+                    {user?.fullName || user?.email || 'User'}
                   </span>
                 </motion.button>
               ) : (
