@@ -3,13 +3,14 @@ import { motion } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { clearCart } from '../../store/slices/cartSlice';
-import { addOrder } from '../../store/slices/orderSlice';
+import { addOrder, OrderItem } from '../../store/slices/orderSlice';
 import { User, Mail, Phone, MapPin, CreditCard, Truck, CheckCircle, ArrowLeft } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import StreamlinedPaymentMethod, { StreamlinedPaymentMethodType } from '../Payment/StreamlinedPaymentMethod';
 import StreamlinedPaymentSection from '../Payment/StreamlinedPaymentSection';
+import { generateTransactionId } from '../../utils/paymentUtils';
 
 const checkoutSchema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
@@ -35,15 +36,36 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ onBack, product }) => {
   const [orderData, setOrderData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Helper function to get product price (handles both regular and deal products)
+  const getProductPrice = (prod: any) => {
+    return Number(prod.price) || Number(prod.dealPrice) || 0;
+  };
+
   // Calculate order details
-  const orderItems = product ? 
+  const orderItems: OrderItem[] = product ? 
     [{
       id: product.id,
-      product: product,
+      product: {
+        id: product.id,
+        name: product.name,
+        price: getProductPrice(product),
+        images: product.images || ['/placeholder.jpg'],
+      },
       quantity: 1,
-    }] : items;
+      price: getProductPrice(product),
+    }] : items.map(item => ({
+      id: item.id,
+      product: {
+        id: item.product.id,
+        name: item.product.name,
+        price: getProductPrice(item.product),
+        images: item.product.images || ['/placeholder.jpg'],
+      },
+      quantity: item.quantity || 1,
+      price: getProductPrice(item.product),
+    }));
 
-  const orderTotal = product ? product.price : total;
+  const orderTotal = product ? getProductPrice(product) : total;
   const tax = orderTotal * 0.18;
   const shipping = orderTotal > 500 ? 0 : 50;
   const grandTotal = orderTotal + tax + shipping;
@@ -102,10 +124,14 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ onBack, product }) => {
         email: customerData.email,
         phone: customerData.phone,
         address: customerData.address,
+        city: 'Not specified',
+        state: 'Not specified', 
+        zipCode: 'Not specified',
+        country: 'India',
       },
       paymentMethod: customerData.paymentMethod,
       paymentResult: paymentResult,
-      transactionId: paymentResult.transactionId,
+      transactionId: paymentResult.transactionId || generateTransactionId(),
       createdAt: new Date().toISOString(),
       estimatedDelivery: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days from now
     };
@@ -142,7 +168,7 @@ const CheckoutForm: React.FC<CheckoutFormProps> = ({ onBack, product }) => {
               <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
             </div>
             <p className="font-medium text-sm text-gray-900">
-              ₹{(item.product.price * item.quantity).toLocaleString('en-IN')}
+              ₹{(item.price * item.quantity).toLocaleString('en-IN')}
             </p>
           </div>
         ))}
