@@ -1,8 +1,15 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { CartItem, Product } from '@shared/schema';
+import type { Product } from '@shared/schema';
+
+// Custom cart item interface with product data
+interface CartItemWithProduct {
+  id: string;
+  product: Product;
+  quantity: number;
+}
 
 interface CartState {
-  items: CartItem[];
+  items: CartItemWithProduct[];
   total: number;
   isOpen: boolean;
 }
@@ -28,17 +35,17 @@ const cartSlice = createSlice({
           quantity: 1,
         });
       }
-      state.total = state.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+      state.total = state.items.reduce((sum, item) => sum + (Number(item.product.price) * item.quantity), 0);
     },
     removeFromCart: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.id !== action.payload);
-      state.total = state.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+      state.total = state.items.reduce((sum, item) => sum + (Number(item.product.price) * item.quantity), 0);
     },
     updateQuantity: (state, action: PayloadAction<{ id: string; quantity: number }>) => {
       const item = state.items.find(item => item.id === action.payload.id);
       if (item) {
         item.quantity = action.payload.quantity;
-        state.total = state.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+        state.total = state.items.reduce((sum, item) => sum + (Number(item.product.price) * item.quantity), 0);
       }
     },
     clearCart: (state) => {

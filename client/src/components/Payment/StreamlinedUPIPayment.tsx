@@ -145,30 +145,125 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
    * Handle UPI app selection via Razorpay UPI Intent
    */
   const handleUPIAppClick = async (app: UPIApp) => {
+    if (isProcessing) return;
+    
+    console.log(`Opening ${app.name} for payment with Razorpay...`);
     setIsProcessing(true);
+    
     try {
-      console.log(`Processing ${app.name} payment via Razorpay UPI Intent...`);
+      // Create Razorpay order on server
+      const orderResponse = await fetch('/api/payments/razorpay/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: amount,
+          currency: 'INR',
+          receipt: orderId,
+          notes: {
+            paymentMethod: 'UPI',
+            upiApp: app.name,
+          },
+        }),
+      });
       
-      // Use Razorpay UPI Intent for the selected app
-      const result = await RazorpayService.processUPIPayment(amount, customerInfo, orderId);
-      
-      if (result.success) {
-        onPaymentSuccess({
-          success: true,
-          transactionId: result.transactionId,
-          paymentMethod: `${app.name} (via Razorpay UPI)`,
-          amount,
-          orderId,
-          timestamp: Date.now()
-        });
-      } else {
-        onPaymentError(result.errorMessage || `${app.name} payment failed`);
+      if (!orderResponse.ok) {
+        throw new Error('Failed to create Razorpay order');
       }
-    } catch (err) {
-      console.error(`${app.name} payment error:`, err);
-      onPaymentError(`Failed to process ${app.name} payment`);
-    } finally {
+      
+      const orderData = await orderResponse.json();
+      console.log('Razorpay order created:', orderData);
+      
+      // Load Razorpay script dynamically
+      const loadRazorpay = () => {
+        return new Promise((resolve) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => resolve((window as any).Razorpay);
+          document.body.appendChild(script);
+        });
+      };
+      
+      const razorpay = await loadRazorpay() as any;
+      
+      const options = {
+        key: RAZORPAY_CONFIG.keyId,
+        amount: amount * 100, // Convert to paise
+        currency: 'INR',
+        name: RAZORPAY_CONFIG.company.name,
+        description: `Payment via ${app.name}`,
+        image: RAZORPAY_CONFIG.company.logo,
+        order_id: orderData.order.id,
+        method: {
+          upi: true,
+        },
+        prefill: {
+          name: 'Customer Name',
+          email: 'customer@example.com',
+          contact: '9999999999',
+        },
+        theme: {
+          color: RAZORPAY_CONFIG.company.theme.color,
+        },
+        handler: async (response: any) => {
+          console.log('Razorpay payment successful:', response);
+          
+          try {
+            // Verify payment on server
+            const verifyResponse = await fetch('/api/payments/razorpay/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+            
+            if (verifyResponse.ok) {
+              const verifyData = await verifyResponse.json();
+              console.log('Payment verified:', verifyData);
+              
+              const result: PaymentSuccessResult = {
+                success: true,
+                transactionId: response.razorpay_payment_id,
+                paymentMethod: `${app.name} UPI`,
+                amount: amount,
+                upiId: upiId,
+                orderId: orderId,
+                timestamp: Date.now(),
+              };
+              
+              setIsProcessing(false);
+              onPaymentSuccess(result);
+            } else {
+              throw new Error('Payment verification failed');
+            }
+          } catch (verifyError) {
+            console.error('Payment verification error:', verifyError);
+            setIsProcessing(false);
+            onPaymentError('Payment verification failed. Please contact support.');
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            console.log('Payment modal closed by user');
+            setIsProcessing(false);
+            onPaymentError('Payment was cancelled by user');
+          },
+        },
+      };
+      
+      const rzp = new razorpay(options);
+      rzp.open();
+      
+    } catch (error) {
+      console.error('UPI payment error:', error);
       setIsProcessing(false);
+      onPaymentError(`Payment failed with ${app.name}. Please try again.`);
     }
   };
 

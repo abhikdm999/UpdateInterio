@@ -370,6 +370,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Razorpay payment routes
+  app.post('/api/payments/razorpay/create-order', async (req, res) => {
+    try {
+      const { amount, currency, receipt, notes } = req.body;
+      
+      // Mock Razorpay order creation for development
+      const mockOrder = {
+        id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        entity: 'order',
+        amount: amount * 100, // Convert to paise
+        amount_paid: 0,
+        amount_due: amount * 100,
+        currency: currency || 'INR',
+        receipt: receipt,
+        status: 'created',
+        attempts: 0,
+        notes: notes || {},
+        created_at: Math.floor(Date.now() / 1000)
+      };
+      
+      console.log('Created Razorpay order:', mockOrder);
+      res.json({ success: true, order: mockOrder });
+    } catch (error) {
+      console.error('Error creating Razorpay order:', error);
+      res.status(500).json({ error: 'Failed to create order' });
+    }
+  });
+
+  app.post('/api/payments/razorpay/verify', async (req, res) => {
+    try {
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+      
+      // Mock payment verification for development
+      console.log('Verifying Razorpay payment:', {
+        orderId: razorpayOrderId,
+        paymentId: razorpayPaymentId,
+        signature: razorpaySignature
+      });
+      
+      // Mock successful verification
+      const verificationResult = {
+        verified: true,
+        paymentId: razorpayPaymentId,
+        orderId: razorpayOrderId,
+        status: 'captured',
+        amount: 0,
+        timestamp: Date.now()
+      };
+      
+      res.json({ success: true, verification: verificationResult });
+    } catch (error) {
+      console.error('Error verifying Razorpay payment:', error);
+      res.status(500).json({ error: 'Payment verification failed' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

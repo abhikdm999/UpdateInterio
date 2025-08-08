@@ -42,6 +42,7 @@ const StreamlinedCheckout: React.FC<StreamlinedCheckoutProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [orderConfirmed, setOrderConfirmed] = useState(false);
+  const [orderId] = useState(`ORD-${Date.now()}`); // Generate orderId once and keep it stable
   const dispatch = useDispatch();
 
   const {
@@ -61,11 +62,26 @@ const StreamlinedCheckout: React.FC<StreamlinedCheckoutProps> = ({
       quantity: 1,
     }] : cartItems;
 
-  const baseAmount = product ? (product.price || 0) : 
-    cartItems.reduce((sum, item) => sum + ((item.product?.price || 0) * (item.quantity || 0)), 0);
+  // Fix for both regular products and deal products
+  const getProductPrice = (prod: any) => {
+    return Number(prod.price) || Number(prod.dealPrice) || 0;
+  };
+  
+  const baseAmount = product ? getProductPrice(product) : 
+    cartItems.reduce((sum, item) => sum + (getProductPrice(item.product) * (item.quantity || 0)), 0);
 
   // Final amount is ONLY the base price - no taxes, shipping, or fees
   const finalAmount = baseAmount || 0;
+
+  console.log('Checkout calculation debug:', { 
+    product: product?.name, 
+    productPrice: product?.price,
+    productPriceType: typeof product?.price,
+    cartItems: cartItems?.length, 
+    baseAmount, 
+    finalAmount,
+    fullProduct: product 
+  });
 
   const onShippingSubmit = (data: ShippingData) => {
     setShippingData(data);
@@ -411,7 +427,7 @@ const StreamlinedCheckout: React.FC<StreamlinedCheckoutProps> = ({
           email: shippingData!.email,
           contact: shippingData!.phone,
         }}
-        orderId={`ORD-${Date.now()}`}
+        orderId={orderId}
         shippingAddress={shippingData}
         onPaymentSuccess={handlePaymentSuccess}
         onPaymentError={handlePaymentError}
@@ -451,7 +467,7 @@ const StreamlinedCheckout: React.FC<StreamlinedCheckoutProps> = ({
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-600">Order ID:</span>
-            <span className="font-mono">ORD-{Date.now()}</span>
+            <span className="font-mono">{orderId}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Payment Method:</span>
