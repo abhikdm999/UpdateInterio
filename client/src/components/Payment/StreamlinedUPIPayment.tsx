@@ -3,12 +3,12 @@
  * 
  * This component provides two UPI payment options:
  * 1. Open with UPI Apps (GPay, PhonePe, Paytm) - using Razorpay UPI Intent
- * 2. Scan QR Code - Display dummy Razorpay QR with 180-second countdown
+ * 2. Scan QR Code - Display Razorpay QR with 180-second countdown
  */
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Smartphone, Clock, Copy, Check, QrCode, ExternalLink, ArrowLeft, Shield } from 'lucide-react';
+import { Smartphone, Clock, Copy, Check, QrCode, ExternalLink, ArrowLeft, Shield, AlertCircle } from 'lucide-react';
 import QRCode from 'qrcode';
 import { RazorpayService } from '../../services/razorpayService';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
@@ -26,6 +26,9 @@ interface PaymentSuccessResult {
   upiId?: string;
   orderId: string;
   timestamp: number;
+  razorpayPaymentId?: string;
+  razorpayOrderId?: string;
+  razorpaySignature?: string;
 }
 
 interface UPIApp {
@@ -33,6 +36,8 @@ interface UPIApp {
   icon: string;
   brandColor: string;
   description: string;
+  packageName: string;
+  upiHandle: string;
 }
 
 interface StreamlinedUPIPaymentProps {
@@ -60,6 +65,7 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
   const [isExpired, setIsExpired] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [razorpayOrder, setRazorpayOrder] = useState<any>(null);
 
   // =============================================
   // PAYMENT CONFIGURATION
@@ -76,44 +82,33 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
     contact: '9999999999'
   };
 
-  // Supported UPI apps for Razorpay Intent
+  // Supported UPI apps with proper deep linking
   const upiApps: UPIApp[] = [
     {
       name: 'Google Pay',
       icon: '💰',
       brandColor: 'bg-blue-600',
-      description: 'Pay securely with Google Pay'
+      description: 'Pay securely with Google Pay',
+      packageName: 'com.google.android.apps.nbu.paisa.user',
+      upiHandle: 'gpay'
     },
     {
       name: 'PhonePe',
       icon: '📱', 
       brandColor: 'bg-purple-600',
-      description: 'Pay instantly with PhonePe'
+      description: 'Pay instantly with PhonePe',
+      packageName: 'com.phonepe.app',
+      upiHandle: 'phonepe'
     },
     {
       name: 'Paytm',
       icon: '💳',
       brandColor: 'bg-indigo-600',
-      description: 'Pay quickly with Paytm'
+      description: 'Pay quickly with Paytm',
+      packageName: 'net.one97.paytm',
+      upiHandle: 'paytm'
     }
   ];
-
-  // Generate dummy Razorpay QR for testing
-  const generateRazorpayQR = async () => {
-    const razorpayUpiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(merchantName)}&am=${amount}&cu=INR&tn=Razorpay%20Payment%20for%20Order%20${orderId}&mc=5411`;
-    
-    try {
-      const url = await QRCode.toDataURL(razorpayUpiLink, {
-        width: 256,
-        margin: 2,
-        color: { dark: '#3B82F6', light: '#FFFFFF' }
-      });
-      setQrCodeUrl(url);
-    } catch (err) {
-      console.error('QR generation failed:', err);
-      onPaymentError('Failed to generate Razorpay QR code');
-    }
-  };
 
   // =============================================
   // EFFECTS AND LIFECYCLE METHODS
@@ -138,20 +133,22 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
     }
   }, [paymentMode]);
 
+  // Create Razorpay order when component mounts
+  useEffect(() => {
+    createRazorpayOrder();
+  }, []);
+
   // =============================================
   // HELPER FUNCTIONS
   // =============================================
+  
   /**
-   * Handle UPI app selection via Razorpay UPI Intent
+   * Create Razorpay order for payment processing
    */
-  const handleUPIAppClick = async (app: UPIApp) => {
-    if (isProcessing) return;
-    
-    console.log(`Opening ${app.name} for payment with Razorpay...`);
-    setIsProcessing(true);
-    
+  const createRazorpayOrder = async () => {
     try {
-      // Create Razorpay order on server
+      console.log('Creating Razorpay order...', { amount, orderId });
+      
       const orderResponse = await fetch('/api/payments/razorpay/create-order', {
         method: 'POST',
         headers: {
@@ -163,7 +160,7 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
           receipt: orderId,
           notes: {
             paymentMethod: 'UPI',
-            upiApp: app.name,
+            orderId: orderId,
           },
         }),
       });
@@ -173,34 +170,85 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
       }
       
       const orderData = await orderResponse.json();
-      console.log('Razorpay order created:', orderData);
+      console.log('Razorpay order created successfully:', orderData);
+      setRazorpayOrder(orderData.order);
       
-      // Load Razorpay script dynamically
-      const loadRazorpay = () => {
-        return new Promise((resolve, reject) => {
-          if ((window as any).Razorpay) {
-            resolve((window as any).Razorpay);
-            return;
-          }
-          
-          const script = document.createElement('script');
-          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-          script.onload = () => resolve((window as any).Razorpay);
-          script.onerror = () => reject(new Error('Failed to load Razorpay script'));
-          document.body.appendChild(script);
-        });
+    } catch (error) {
+      console.error('Error creating Razorpay order:', error);
+      onPaymentError('Failed to initialize payment. Please try again.');
+    }
+  };
+
+  /**
+   * Generate Razorpay QR code for UPI payment
+   */
+  const generateRazorpayQR = async () => {
+    if (!razorpayOrder) {
+      console.error('No Razorpay order available for QR generation');
+      return;
+    }
+
+    const razorpayUpiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(merchantName)}&am=${amount}&cu=INR&tn=Razorpay%20Payment%20for%20Order%20${orderId}&mc=5411&tr=${razorpayOrder.id}`;
+    
+    try {
+      const url = await QRCode.toDataURL(razorpayUpiLink, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#3B82F6', light: '#FFFFFF' }
+      });
+      setQrCodeUrl(url);
+      console.log('QR code generated successfully');
+    } catch (err) {
+      console.error('QR generation failed:', err);
+      onPaymentError('Failed to generate payment QR code');
+    }
+  };
+
+  /**
+   * Load Razorpay script dynamically
+   */
+  const loadRazorpayScript = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if ((window as any).Razorpay) {
+        resolve((window as any).Razorpay);
+        return;
+      }
+      
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => {
+        console.log('Razorpay script loaded successfully');
+        resolve((window as any).Razorpay);
       };
-      
-      const razorpay = await loadRazorpay() as any;
+      script.onerror = () => {
+        console.error('Failed to load Razorpay script');
+        reject(new Error('Failed to load Razorpay script'));
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  /**
+   * Handle UPI app selection via Razorpay UPI Intent
+   */
+  const handleUPIAppClick = async (app: UPIApp) => {
+    if (isProcessing || !razorpayOrder) return;
+    
+    console.log(`Opening ${app.name} for payment with Razorpay...`);
+    setIsProcessing(true);
+    
+    try {
+      // Load Razorpay script
+      const Razorpay = await loadRazorpayScript();
       
       const options = {
         key: RAZORPAY_CONFIG.keyId,
-        amount: orderData.order.amount,
-        currency: orderData.order.currency,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
         name: RAZORPAY_CONFIG.company.name,
         description: `Payment via ${app.name} - Test Environment`,
         image: RAZORPAY_CONFIG.company.logo,
-        order_id: orderData.order.id,
+        order_id: razorpayOrder.id,
         method: {
           upi: true,
         },
@@ -241,6 +289,9 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
                 upiId: upiId,
                 orderId: orderId,
                 timestamp: Date.now(),
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpaySignature: response.razorpay_signature,
               };
               
               setIsProcessing(false);
@@ -263,7 +314,7 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
         },
       };
       
-      const rzp = new razorpay(options);
+      const rzp = new Razorpay(options);
       
       // Add error handling for payment failures
       rzp.on('payment.failed', (response: any) => {
@@ -272,6 +323,7 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
         onPaymentError(`Payment failed: ${response.error.description || 'Unknown error'}`);
       });
       
+      console.log('Opening Razorpay payment modal...');
       rzp.open();
       
     } catch (error) {
@@ -279,6 +331,52 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
       setIsProcessing(false);
       onPaymentError(`Payment failed with ${app.name}. Please try again.`);
     }
+  };
+
+  /**
+   * Generate UPI deep link for direct app opening
+   */
+  const generateUPIDeepLink = (app: UPIApp): string => {
+    if (!razorpayOrder) return '';
+    
+    const baseParams = {
+      pa: upiId,
+      pn: merchantName,
+      am: amount.toString(),
+      cu: 'INR',
+      tn: `Payment for Order ${orderId}`,
+      tr: razorpayOrder.id,
+      mc: '5411'
+    };
+    
+    const params = new URLSearchParams(baseParams);
+    return `upi://pay?${params.toString()}`;
+  };
+
+  /**
+   * Handle direct UPI app opening (fallback method)
+   */
+  const handleDirectUPIOpen = (app: UPIApp) => {
+    const upiLink = generateUPIDeepLink(app);
+    
+    if (!upiLink) {
+      onPaymentError('Payment link generation failed');
+      return;
+    }
+    
+    console.log(`Opening ${app.name} directly with UPI link:`, upiLink);
+    
+    // Try to open the UPI app
+    const link = document.createElement('a');
+    link.href = upiLink;
+    link.click();
+    
+    // Show manual verification option after 5 seconds
+    setTimeout(() => {
+      if (!isProcessing) {
+        setPaymentMode('qr'); // Switch to QR mode for manual verification
+      }
+    }, 5000);
   };
 
   /**
@@ -369,52 +467,64 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
           <p className="text-3xl font-bold text-blue-600">₹{amount.toLocaleString('en-IN')}</p>
         </div>
 
-        {/* Two Payment Options */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-900 text-center">Select Payment Method</h4>
-          
-          {/* Option 1: Open with UPI Apps */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setPaymentMode('apps')}
-            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                  <Smartphone className="w-6 h-6" />
-                </div>
-                <div className="text-left">
-                  <h5 className="text-lg font-semibold">Open with UPI Apps</h5>
-                  <p className="text-blue-100 text-sm">Pay directly through GPay, PhonePe, Paytm</p>
-                </div>
-              </div>
-              <ExternalLink className="w-5 h-5 text-blue-200" />
+        {/* Order Status */}
+        {!razorpayOrder && (
+          <div className="bg-amber-50 rounded-xl p-4 text-center">
+            <div className="flex items-center justify-center space-x-2 mb-2">
+              <div className="w-4 h-4 border-2 border-amber-600/30 border-t-amber-600 rounded-full animate-spin" />
+              <span className="text-amber-800 font-medium">Initializing payment...</span>
             </div>
-          </motion.button>
+          </div>
+        )}
 
-          {/* Option 2: Scan QR Code */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setPaymentMode('qr')}
-            className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white p-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                  <QrCode className="w-6 h-6" />
+        {/* Two Payment Options */}
+        {razorpayOrder && (
+          <div className="space-y-4">
+            <h4 className="font-medium text-gray-900 text-center">Select Payment Method</h4>
+            
+            {/* Option 1: Open with UPI Apps */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setPaymentMode('apps')}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <Smartphone className="w-6 h-6" />
+                  </div>
+                  <div className="text-left">
+                    <h5 className="text-lg font-semibold">Open with UPI Apps</h5>
+                    <p className="text-blue-100 text-sm">Pay directly through GPay, PhonePe, Paytm</p>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <h5 className="text-lg font-semibold">Scan QR Code</h5>
-                  <p className="text-purple-100 text-sm">Scan with any UPI app (180 sec timer)</p>
-                </div>
+                <ExternalLink className="w-5 h-5 text-blue-200" />
               </div>
-              <Clock className="w-5 h-5 text-purple-200" />
-            </div>
-          </motion.button>
-        </div>
+            </motion.button>
+
+            {/* Option 2: Scan QR Code */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setPaymentMode('qr')}
+              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white p-6 rounded-xl transition-all shadow-lg hover:shadow-xl"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <QrCode className="w-6 h-6" />
+                  </div>
+                  <div className="text-left">
+                    <h5 className="text-lg font-semibold">Scan QR Code</h5>
+                    <p className="text-purple-100 text-sm">Scan with any UPI app (180 sec timer)</p>
+                  </div>
+                </div>
+                <Clock className="w-5 h-5 text-purple-200" />
+              </div>
+            </motion.button>
+          </div>
+        )}
 
         {/* Razorpay Branding */}
         <div className="text-center">
@@ -504,16 +614,31 @@ const StreamlinedUPIPayment: React.FC<StreamlinedUPIPaymentProps> = ({
           </div>
         )}
 
-        {/* Instructions */}
+        {/* Fallback Instructions */}
         <div className="bg-amber-50 rounded-xl p-4">
           <h4 className="font-medium text-amber-900 mb-2">Payment Instructions</h4>
           <ul className="text-sm text-amber-800 space-y-1">
             <li>• Select your preferred UPI app above</li>
-            <li>• The app will open with payment details pre-filled</li>
-            <li>• Verify the amount and merchant details</li>
-            <li>• Complete the payment using your UPI PIN</li>
+            <li>• The Razorpay payment window will open</li>
+            <li>• Choose UPI as payment method</li>
+            <li>• Select your UPI app and complete payment</li>
             <li>• You'll be redirected back automatically after payment</li>
           </ul>
+        </div>
+
+        {/* Test Mode Notice */}
+        <div className="bg-green-50 rounded-xl p-4">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-green-600 mt-0.5" />
+            <div>
+              <h5 className="font-medium text-green-900 mb-2">Test Mode Active</h5>
+              <div className="text-sm text-green-800 space-y-1">
+                <p>• Use test UPI ID: <strong>success@razorpay</strong> for successful payments</p>
+                <p>• Use test UPI ID: <strong>failure@razorpay</strong> for failed payments</p>
+                <p>• No real money will be charged in test mode</p>
+              </div>
+            </div>
+          </div>
         </div>
       </motion.div>
     );

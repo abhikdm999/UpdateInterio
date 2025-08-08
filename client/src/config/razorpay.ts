@@ -1,7 +1,7 @@
 // Razorpay Configuration
 export const RAZORPAY_CONFIG = {
   // Test API Keys - Replace with your actual test keys
-  keyId: 'rzp_test_1DP5mmOlF5G5ag', // Dummy Test Key ID for testing
+  keyId: 'rzp_test_1DP5mmOlF5G5ag', // Test Key ID - Replace with actual test key
   keySecret: 'thisissecretkey', // Dummy Test Key Secret (server-side only)
   
   // Test webhook secret
@@ -26,7 +26,7 @@ export const RAZORPAY_CONFIG = {
     },
     // Test environment settings
     testCredentials: {
-      upiId: 'test@razorpay',
+      upiId: 'success@razorpay', // Use success@razorpay for successful test payments
       merchantCode: 'TEST_MERCHANT_001',
       terminalId: 'TEST_TERMINAL_001'
     }

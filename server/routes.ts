@@ -375,6 +375,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { amount, currency, receipt, notes } = req.body;
       
+      // Validate input
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: 'Invalid amount' });
+      }
+      
       // Mock Razorpay order creation for development
       const mockOrder = {
         id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
@@ -394,13 +399,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, order: mockOrder });
     } catch (error) {
       console.error('Error creating Razorpay order:', error);
-      res.status(500).json({ error: 'Failed to create order' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create order' });
     }
   });
 
   app.post('/api/payments/razorpay/verify', async (req, res) => {
     try {
       const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+      
+      // Validate input
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return res.status(400).json({ error: 'Missing payment verification data' });
+      }
       
       // Mock payment verification for development
       console.log('Verifying Razorpay payment:', {
@@ -409,20 +419,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         signature: razorpaySignature
       });
       
-      // Mock successful verification
+      // Mock successful verification (in production, verify signature with Razorpay)
       const verificationResult = {
         verified: true,
         paymentId: razorpayPaymentId,
         orderId: razorpayOrderId,
         status: 'captured',
-        amount: 0,
+        amount: 100, // Mock amount in paise
         timestamp: Date.now()
       };
       
       res.json({ success: true, verification: verificationResult });
     } catch (error) {
       console.error('Error verifying Razorpay payment:', error);
-      res.status(500).json({ error: 'Payment verification failed' });
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Payment verification failed' });
     }
   });
 

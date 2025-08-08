@@ -136,8 +136,27 @@ export class RazorpayService {
       const razorpayOrder = await this.createOrder(orderRequest);
       console.log('Razorpay order created:', razorpayOrder);
 
-      // Generate Razorpay options for UPI only
-      const options = generateRazorpayOptions(amount, razorpayOrder.id, customerInfo, 'upi');
+      // Generate Razorpay options for UPI payment
+      const options = {
+        key: RAZORPAY_CONFIG.keyId,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+        name: RAZORPAY_CONFIG.company.name,
+        description: 'UPI Payment - Test Environment',
+        image: RAZORPAY_CONFIG.company.logo,
+        order_id: razorpayOrder.id,
+        method: {
+          upi: true,
+        },
+        prefill: {
+          name: customerInfo.name,
+          email: customerInfo.email,
+          contact: customerInfo.contact,
+        },
+        theme: {
+          color: RAZORPAY_CONFIG.company.theme.color,
+        },
+      };
       console.log('Razorpay options generated:', options);
 
       return new Promise((resolve, reject) => {
@@ -150,13 +169,25 @@ export class RazorpayService {
             console.log('Payment successful:', response);
             resolve({
               success: true,
-              transactionId: `UPI_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+              transactionId: response.razorpay_payment_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpayOrderId: response.razorpay_order_id,
               razorpaySignature: response.razorpay_signature,
               paymentMethod: 'UPI',
               amount,
               timestamp: Date.now()
+            });
+          },
+          'payment.failed': (response: any) => {
+            // Payment failed
+            console.error('Payment failed:', response);
+            resolve({
+              success: false,
+              transactionId: `UPI_FAILED_${Date.now()}`,
+              paymentMethod: 'UPI',
+              amount,
+              timestamp: Date.now(),
+              errorMessage: response.error?.description || 'Payment failed'
             });
           },
           modal: {
@@ -173,6 +204,19 @@ export class RazorpayService {
               });
             }
           }
+        });
+
+        // Add event listener for payment failures
+        razorpay.on('payment.failed', (response: any) => {
+          console.error('Razorpay payment failed event:', response);
+          resolve({
+            success: false,
+            transactionId: `UPI_FAILED_${Date.now()}`,
+            paymentMethod: 'UPI',
+            amount,
+            timestamp: Date.now(),
+            errorMessage: response.error?.description || 'Payment failed'
+          });
         });
 
         razorpay.open();
